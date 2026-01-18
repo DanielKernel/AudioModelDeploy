@@ -63,24 +63,70 @@ def check_dependencies() -> List[Tuple[str, bool, str]]:
 
 
 def check_cuda() -> Tuple[bool, Dict[str, str]]:
-    """检查CUDA可用性"""
+    """检查CUDA可用性（支持DGX Spark环境）"""
+    info = {}
+    
+    # 方法1: 检查nvidia-smi（系统级检查，最可靠）
+    nvidia_smi_available = False
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            nvidia_smi_available = True
+            gpu_names = result.stdout.strip().split('\n')
+            info['nvidia_smi'] = "可用"
+            info['gpu_count_smi'] = str(len(gpu_names))
+            if gpu_names:
+                info['gpu_0_name'] = gpu_names[0]
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        info['nvidia_smi'] = f"不可用 ({str(e)[:30]})"
+    
+    # 方法2: 检查PyTorch CUDA支持
+    pytorch_cuda_available = False
     try:
         import torch
-        cuda_available = torch.cuda.is_available()
-        info = {}
+        pytorch_cuda_available = torch.cuda.is_available()
         
-        if cuda_available:
-            info['available'] = "是"
-            info['version'] = torch.version.cuda or "未知"
+        if pytorch_cuda_available:
+            info['pytorch_cuda'] = "可用"
+            info['cuda_version'] = torch.version.cuda or "未知"
             info['device_count'] = str(torch.cuda.device_count())
-            if torch.cuda.device_count() > 0:
-                info['device_0'] = torch.cuda.get_device_name(0)
+            
+            # 尝试获取设备信息
+            try:
+                if torch.cuda.device_count() > 0:
+                    info['device_0'] = torch.cuda.get_device_name(0)
+                    # 尝试创建一个tensor来验证CUDA真正可用
+                    try:
+                        test_tensor = torch.tensor([1.0]).cuda()
+                        info['cuda_test'] = "通过"
+                        del test_tensor
+                    except Exception as e:
+                        info['cuda_test'] = f"失败 ({str(e)[:30]})"
+            except Exception as e:
+                info['device_error'] = str(e)[:50]
         else:
-            info['available'] = "否"
-        
-        return cuda_available, info
+            info['pytorch_cuda'] = "不可用"
     except ImportError:
-        return False, {'error': 'PyTorch未安装'}
+        info['pytorch'] = "未安装"
+    
+    # 综合判断：如果nvidia-smi可用，则认为CUDA可用（即使PyTorch暂时检测不到）
+    # 这在DGX Spark环境中很重要，因为GPU可能已经配置但PyTorch需要特定版本
+    cuda_available = nvidia_smi_available or pytorch_cuda_available
+    
+    if cuda_available:
+        info['available'] = "是"
+        # 如果PyTorch CUDA不可用但nvidia-smi可用，给出提示
+        if nvidia_smi_available and not pytorch_cuda_available:
+            info['warning'] = "检测到GPU但PyTorch CUDA不可用，可能需要安装CUDA版本的PyTorch"
+    else:
+        info['available'] = "否"
+    
+    return cuda_available, info
 
 
 def check_env_file() -> Tuple[bool, str]:
@@ -147,15 +193,38 @@ def main():
     # CUDA
     print("\n[GPU/CUDA]")
     cuda_available, cuda_info = check_cuda()
-    if 'error' in cuda_info:
-        print_check("CUDA", False, cuda_info['error'])
+    
+    if 'pytorch' in cuda_info and cuda_info['pytorch'] == "未安装":
+        print_check("CUDA", False, "PyTorch未安装，无法检测CUDA")
     else:
         print_check("CUDA可用", cuda_available, cuda_info.get('available', '未知'))
-        if cuda_available:
-            print(f"  - CUDA版本: {cuda_info.get('version', '未知')}")
-            print(f"  - GPU数量: {cuda_info.get('device_count', '0')}")
+        
+        # 显示nvidia-smi检测结果
+        if 'nvidia_smi' in cuda_info:
+            smi_status = "✓" if cuda_info['nvidia_smi'] == "可用" else "✗"
+            print(f"  {smi_status} nvidia-smi: {cuda_info['nvidia_smi']}")
+            if 'gpu_count_smi' in cuda_info:
+                print(f"    - GPU数量(nvidia-smi): {cuda_info['gpu_count_smi']}")
+            if 'gpu_0_name' in cuda_info:
+                print(f"    - GPU 0: {cuda_info['gpu_0_name']}")
+        
+        # 显示PyTorch CUDA检测结果
+        if 'pytorch_cuda' in cuda_info:
+            pytorch_status = "✓" if cuda_info['pytorch_cuda'] == "可用" else "✗"
+            print(f"  {pytorch_status} PyTorch CUDA: {cuda_info['pytorch_cuda']}")
+            if 'cuda_version' in cuda_info:
+                print(f"    - CUDA版本: {cuda_info['cuda_version']}")
+            if 'device_count' in cuda_info:
+                print(f"    - GPU数量(PyTorch): {cuda_info['device_count']}")
             if 'device_0' in cuda_info:
-                print(f"  - GPU 0: {cuda_info['device_0']}")
+                print(f"    - GPU 0: {cuda_info['device_0']}")
+            if 'cuda_test' in cuda_info:
+                test_status = "✓" if cuda_info['cuda_test'] == "通过" else "✗"
+                print(f"    {test_status} CUDA测试: {cuda_info['cuda_test']}")
+        
+        # 显示警告
+        if 'warning' in cuda_info:
+            print(f"  ⚠ 警告: {cuda_info['warning']}")
     
     # 配置文件
     print("\n[配置文件]")

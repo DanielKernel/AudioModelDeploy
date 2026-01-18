@@ -60,19 +60,20 @@ class Qwen3OmniModel:
         self.tokenizer = None
         self.processor = None
         self._is_loaded = False
+        self.model_local_path = None  # 模型本地路径（从ModelScope下载后的路径）
         
         logger.info(f"初始化模型: {self.model_name}")
         logger.info(f"设备: {self.device}, 数据类型: {self.torch_dtype}")
     
-    def _check_model_exists(self, model_name: str) -> bool:
+    def _check_model_exists(self, model_name: str) -> Optional[str]:
         """
-        检查模型是否已存在于本地缓存
+        检查模型是否已存在于本地缓存，返回本地路径
         
         Args:
             model_name: 模型名称或路径
         
         Returns:
-            True如果模型存在，False如果不存在
+            如果模型存在则返回本地路径，否则返回None
         """
         try:
             # 检查是否是本地路径
@@ -82,44 +83,31 @@ class Qwen3OmniModel:
                 model_dir = Path(model_name)
                 if all((model_dir / f).exists() for f in required_files):
                     logger.info(f"模型已在本地路径找到: {model_name}")
-                    return True
+                    return str(model_dir.absolute())
             
-            # 尝试从HuggingFace缓存查找
-            from huggingface_hub import cached_path, hf_hub_download
-            try:
-                # 尝试获取config.json来验证模型是否存在
-                config_path = cached_path(
-                    f"{model_name}/config.json",
-                    cache_dir=os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
-                )
-                if config_path and os.path.exists(config_path):
-                    logger.info(f"模型已在HuggingFace缓存中找到: {model_name}")
-                    return True
-            except Exception:
-                pass
+            # 不检查HuggingFace缓存，只使用ModelScope下载的模型
             
             # 检查ModelScope缓存
             if MODELSCOPE_AVAILABLE:
                 try:
-                    from modelscope.hub.api import HubApi
-                    api = HubApi()
                     # ModelScope缓存通常在 ~/.cache/modelscope/hub 目录
-                    cache_root = os.path.expanduser("~/.cache/modelscope/hub")
+                    cache_root = os.getenv("MODELSCOPE_CACHE", os.path.expanduser("~/.cache/modelscope/hub"))
                     # 将模型名转换为路径格式 (Qwen/Qwen3-Omni-30B-A3B-Instruct -> qwen/qwen3-omni-30b-a3b-instruct)
                     model_path_name = model_name.lower().replace("/", "--")
                     model_cache_dir = os.path.join(cache_root, model_path_name)
                     if os.path.exists(model_cache_dir):
                         # 检查是否有config.json
                         if os.path.exists(os.path.join(model_cache_dir, "config.json")):
-                            logger.info(f"模型已在ModelScope缓存中找到: {model_name}")
-                            return True
-                except Exception:
+                            logger.info(f"模型已在ModelScope缓存中找到: {model_cache_dir}")
+                            return model_cache_dir
+                except Exception as e:
+                    logger.debug(f"检查ModelScope缓存时出错: {str(e)}")
                     pass
             
-            return False
+            return None
         except Exception as e:
             logger.warning(f"检查模型存在性时出错: {str(e)}")
-            return False
+            return None
     
     def _download_model_from_modelscope(self, model_name: str) -> str:
         """
@@ -157,10 +145,13 @@ class Qwen3OmniModel:
     def _ensure_model_available(self):
         """
         确保模型可用，如果不存在则从ModelScope下载
+        下载后将使用本地路径，避免从HuggingFace在线访问
         """
         # 检查模型是否已存在
-        if self._check_model_exists(self.model_name):
-            logger.info("模型已存在，跳过下载")
+        local_path = self._check_model_exists(self.model_name)
+        if local_path:
+            logger.info(f"模型已存在，使用本地路径: {local_path}")
+            self.model_local_path = local_path
             return
         
         # 模型不存在，尝试从ModelScope下载
@@ -168,9 +159,10 @@ class Qwen3OmniModel:
         
         try:
             downloaded_path = self._download_model_from_modelscope(self.model_name)
-            # 如果下载成功，更新model_name为本地路径（可选）
-            # 注意：transformers可以直接使用模型名称，它会自动查找缓存
-            logger.info(f"模型准备完成: {self.model_name}")
+            # 下载成功后，使用本地路径而不是模型名称
+            # 这样可以避免transformers尝试从HuggingFace在线访问配置文件
+            self.model_local_path = downloaded_path
+            logger.info(f"模型下载完成，使用本地路径: {downloaded_path}")
         except Exception as e:
             logger.error(f"无法确保模型可用: {str(e)}")
             logger.warning(
@@ -188,30 +180,44 @@ class Qwen3OmniModel:
         # 确保模型可用（检查并下载）
         self._ensure_model_available()
         
+        # 使用本地路径加载模型，避免在线访问HuggingFace
+        if not self.model_local_path:
+            raise RuntimeError("模型本地路径未设置，无法加载模型")
+        
+        model_path = self.model_local_path
+        logger.info(f"使用本地路径加载模型: {model_path}")
+        
         try:
-            logger.info("开始加载tokenizer...")
+            logger.info("开始加载tokenizer和processor...")
             # 尝试加载processor（多模态模型通常有processor）
+            # 使用local_files_only=True确保只从本地文件加载，不会在线访问
             try:
                 self.processor = AutoProcessor.from_pretrained(
-                    self.model_name,
-                    trust_remote_code=True
+                    model_path,
+                    trust_remote_code=True,
+                    local_files_only=True  # 只使用本地文件，不访问HuggingFace
                 )
                 self.tokenizer = self.processor.tokenizer
-            except:
+                logger.info("成功加载processor和tokenizer")
+            except Exception as e:
+                logger.warning(f"加载processor失败，尝试只加载tokenizer: {str(e)}")
                 # 如果没有processor，只加载tokenizer
                 self.tokenizer = AutoTokenizer.from_pretrained(
-                    self.model_name,
-                    trust_remote_code=True
+                    model_path,
+                    trust_remote_code=True,
+                    local_files_only=True  # 只使用本地文件，不访问HuggingFace
                 )
                 self.processor = None
+                logger.info("成功加载tokenizer")
             
             logger.info("开始加载模型...")
             self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
+                model_path,
                 device_map="auto",  # 自动分配设备
                 torch_dtype=self.torch_dtype,
                 trust_remote_code=True,
-                low_cpu_mem_usage=True
+                low_cpu_mem_usage=True,
+                local_files_only=True  # 只使用本地文件，不访问HuggingFace
             )
             
             # 如果使用processor，确保模型配置正确
