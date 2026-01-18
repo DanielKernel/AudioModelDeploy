@@ -60,9 +60,15 @@ source "$VENV_DIR/bin/activate"
 echo -e "${YELLOW}升级pip...${NC}"
 pip install --upgrade pip setuptools wheel
 
-# 安装基础依赖
+# 安装依赖（使用智能安装脚本，自动检测CUDA并安装对应版本的PyTorch）
 echo -e "${YELLOW}安装项目依赖...${NC}"
-pip install -r requirements.txt
+if [ -f "install_dependencies.sh" ]; then
+    chmod +x install_dependencies.sh
+    ./install_dependencies.sh
+else
+    echo -e "${YELLOW}安装脚本不存在，使用传统方式安装...${NC}"
+    pip install -r requirements.txt
+fi
 
 # 检查是否安装开发依赖
 read -p "是否安装开发依赖? (y/N): " -n 1 -r

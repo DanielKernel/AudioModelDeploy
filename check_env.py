@@ -373,44 +373,38 @@ def main():
                 test_status = "✓" if cuda_info['cuda_test'] == "通过" else "✗"
                 print(f"    {test_status} CUDA测试: {cuda_info['cuda_test']}")
         
-        # 显示警告并提供自动安装选项
+        # 显示警告并提供建议
         if 'warning' in cuda_info:
             print(f"  ⚠ 警告: {cuda_info['warning']}")
             
-            # 如果检测到GPU但PyTorch CUDA不可用，提供自动安装选项
+            # 如果检测到GPU但PyTorch CUDA不可用，提供安装建议
             if (cuda_info.get('nvidia_smi') == "可用" and 
                 cuda_info.get('pytorch_cuda') == "不可用"):
-                print(f"\n{YELLOW}检测到GPU但PyTorch CUDA不可用{NC}")
+                print(f"\n{YELLOW}建议:{NC}")
+                print(f"  检测到GPU但PyTorch CUDA不可用。")
+                print(f"  建议重新安装依赖以安装CUDA版本的PyTorch：")
+                print(f"    1. 运行: ./install_dependencies.sh")
+                print(f"    2. 或重新运行: ./setup_venv.sh")
+                print(f"  这将自动检测CUDA版本并安装对应的PyTorch。")
                 
-                # 检查是否从命令行传入--auto-install参数
-                auto_install = '--auto-install' in sys.argv or '--auto-install-pytorch' in sys.argv
-                
-                if auto_install:
-                    # 自动安装模式
-                    print(f"{YELLOW}自动安装模式: 开始安装PyTorch CUDA版本...{NC}")
-                    success, msg = install_pytorch_cuda(auto_confirm=True)
-                    if success:
-                        print(f"{GREEN}✓ {msg}{NC}")
-                        # 重新检查CUDA状态
-                        cuda_available, cuda_info = check_cuda()
-                    else:
-                        print(f"{RED}✗ {msg}{NC}")
-                else:
-                    # 交互模式：询问用户
-                    response = input(f"\n{YELLOW}是否自动安装PyTorch CUDA版本? (y/N): {NC}")
-                    if response.lower() in ['y', 'yes']:
-                        success, msg = install_pytorch_cuda(auto_confirm=False)
-                        if success:
-                            print(f"{GREEN}✓ {msg}{NC}")
-                            # 重新检查CUDA状态
-                            cuda_available, cuda_info = check_cuda()
-                        else:
-                            print(f"{RED}✗ {msg}{NC}")
-                    else:
-                        print(f"{YELLOW}跳过PyTorch CUDA安装。可稍后手动运行:{NC}")
-                        cuda_version = get_cuda_version()
-                        install_cmd, _, _ = get_pytorch_cuda_install_command(cuda_version)
-                        print(f"  {install_cmd}")
+                # 如果install_dependencies.sh存在，提供快速安装选项
+                if os.path.exists("install_dependencies.sh"):
+                    print(f"\n{YELLOW}是否现在运行 install_dependencies.sh 安装CUDA版本PyTorch? (y/N): {NC}", end="")
+                    try:
+                        response = input()
+                        if response.lower() in ['y', 'yes']:
+                            print(f"{GREEN}运行安装脚本...{NC}")
+                            import subprocess
+                            result = subprocess.run(
+                                ['bash', 'install_dependencies.sh'],
+                                capture_output=False
+                            )
+                            if result.returncode == 0:
+                                print(f"{GREEN}安装完成！请重新运行 check_env.py 验证。{NC}")
+                            else:
+                                print(f"{RED}安装失败。{NC}")
+                    except (KeyboardInterrupt, EOFError):
+                        print(f"\n{YELLOW}已取消。{NC}")
     
     # 配置文件
     print("\n[配置文件]")
