@@ -7,7 +7,8 @@ import sys
 import os
 import subprocess
 import platform
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
+import re
 
 # 颜色定义
 RED = '\033[0;31m'
@@ -60,6 +61,156 @@ def check_dependencies() -> List[Tuple[str, bool, str]]:
             results.append((name, False, "未安装"))
     
     return results
+
+
+def get_cuda_version() -> Optional[str]:
+    """
+    获取系统CUDA版本
+    
+    Returns:
+        CUDA版本字符串（如'11.8'），如果无法检测则返回None
+    """
+    # 方法1: 从nvidia-smi获取CUDA版本
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=driver_version,cuda_version', '--format=csv,noheader'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            # 提取CUDA版本（格式可能是 "12.0" 或 "11.8"）
+            lines = result.stdout.strip().split('\n')
+            if lines:
+                # 尝试从输出中提取CUDA版本
+                for line in lines:
+                    parts = line.split(',')
+                    if len(parts) >= 2:
+                        cuda_ver = parts[1].strip()
+                        # 提取主版本号（如11.8, 12.0）
+                        match = re.search(r'(\d+\.\d+)', cuda_ver)
+                        if match:
+                            return match.group(1)
+    except Exception:
+        pass
+    
+    # 方法2: 从nvcc获取CUDA版本
+    try:
+        result = subprocess.run(
+            ['nvcc', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            # 提取CUDA版本（输出格式：release 11.8, V11.8.xxx）
+            match = re.search(r'release (\d+\.\d+)', result.stdout)
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
+    
+    return None
+
+
+def get_pytorch_cuda_install_command(cuda_version: Optional[str] = None) -> Tuple[str, str, str]:
+    """
+    根据CUDA版本获取PyTorch安装命令
+    
+    Args:
+        cuda_version: CUDA版本（如'11.8', '12.1'），如果为None则自动检测
+    
+    Returns:
+        (安装命令, PyTorch CUDA版本标识, 检测到的CUDA版本)
+    """
+    if cuda_version is None:
+        cuda_version = get_cuda_version()
+    
+    # 如果没有检测到CUDA版本，使用默认的CUDA 11.8
+    if cuda_version is None:
+        cuda_version = "11.8"
+    
+    # 根据CUDA版本选择PyTorch索引
+    # PyTorch官方支持的CUDA版本映射
+    cuda_version_major = float(cuda_version) if '.' in cuda_version else float(f"{cuda_version}.0")
+    
+    if cuda_version_major >= 12.0:
+        # CUDA 12.x 使用最新版本
+        torch_cuda = "cu121"
+        index_url = "https://download.pytorch.org/whl/cu121"
+    elif cuda_version_major >= 11.8:
+        # CUDA 11.8 使用 cu118
+        torch_cuda = "cu118"
+        index_url = "https://download.pytorch.org/whl/cu118"
+    elif cuda_version_major >= 11.7:
+        # CUDA 11.7 使用 cu117
+        torch_cuda = "cu117"
+        index_url = "https://download.pytorch.org/whl/cu117"
+    else:
+        # CUDA 11.6及以下，使用 cu116
+        torch_cuda = "cu116"
+        index_url = "https://download.pytorch.org/whl/cu116"
+    
+    # 构建安装命令
+    install_cmd = (
+        f"pip install torch torchvision torchaudio "
+        f"--index-url {index_url}"
+    )
+    
+    return install_cmd, torch_cuda, cuda_version
+
+
+def install_pytorch_cuda(cuda_version: Optional[str] = None, auto_confirm: bool = False) -> Tuple[bool, str]:
+    """
+    自动安装CUDA版本的PyTorch
+    
+    Args:
+        cuda_version: CUDA版本，如果为None则自动检测
+        auto_confirm: 是否自动确认安装（不询问用户）
+    
+    Returns:
+        (成功标志, 消息)
+    """
+    try:
+        install_cmd, torch_cuda, detected_cuda = get_pytorch_cuda_install_command(cuda_version)
+        
+        print(f"\n{YELLOW}准备安装PyTorch CUDA版本...{NC}")
+        print(f"  检测到的CUDA版本: {detected_cuda}")
+        print(f"  PyTorch CUDA版本: {torch_cuda}")
+        print(f"  安装命令: {install_cmd}")
+        
+        if not auto_confirm:
+            response = input(f"\n{YELLOW}是否继续安装? (y/N): {NC}")
+            if response.lower() not in ['y', 'yes']:
+                return False, "用户取消安装"
+        
+        print(f"\n{GREEN}开始安装PyTorch CUDA版本...{NC}")
+        
+        # 执行安装命令
+        result = subprocess.run(
+            install_cmd.split(),
+            capture_output=False,  # 显示实时输出
+            text=True,
+            timeout=600  # 10分钟超时
+        )
+        
+        if result.returncode == 0:
+            # 验证安装
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    return True, f"安装成功！PyTorch CUDA可用，版本: {torch.version.cuda}"
+                else:
+                    return False, "安装完成但CUDA仍然不可用，可能需要重启Python环境"
+            except Exception as e:
+                return False, f"安装完成但验证失败: {str(e)}"
+        else:
+            return False, f"安装失败，退出代码: {result.returncode}"
+            
+    except subprocess.TimeoutExpired:
+        return False, "安装超时（超过10分钟）"
+    except Exception as e:
+        return False, f"安装过程中出错: {str(e)}"
 
 
 def check_cuda() -> Tuple[bool, Dict[str, str]]:
@@ -222,9 +373,44 @@ def main():
                 test_status = "✓" if cuda_info['cuda_test'] == "通过" else "✗"
                 print(f"    {test_status} CUDA测试: {cuda_info['cuda_test']}")
         
-        # 显示警告
+        # 显示警告并提供自动安装选项
         if 'warning' in cuda_info:
             print(f"  ⚠ 警告: {cuda_info['warning']}")
+            
+            # 如果检测到GPU但PyTorch CUDA不可用，提供自动安装选项
+            if (cuda_info.get('nvidia_smi') == "可用" and 
+                cuda_info.get('pytorch_cuda') == "不可用"):
+                print(f"\n{YELLOW}检测到GPU但PyTorch CUDA不可用{NC}")
+                
+                # 检查是否从命令行传入--auto-install参数
+                auto_install = '--auto-install' in sys.argv or '--auto-install-pytorch' in sys.argv
+                
+                if auto_install:
+                    # 自动安装模式
+                    print(f"{YELLOW}自动安装模式: 开始安装PyTorch CUDA版本...{NC}")
+                    success, msg = install_pytorch_cuda(auto_confirm=True)
+                    if success:
+                        print(f"{GREEN}✓ {msg}{NC}")
+                        # 重新检查CUDA状态
+                        cuda_available, cuda_info = check_cuda()
+                    else:
+                        print(f"{RED}✗ {msg}{NC}")
+                else:
+                    # 交互模式：询问用户
+                    response = input(f"\n{YELLOW}是否自动安装PyTorch CUDA版本? (y/N): {NC}")
+                    if response.lower() in ['y', 'yes']:
+                        success, msg = install_pytorch_cuda(auto_confirm=False)
+                        if success:
+                            print(f"{GREEN}✓ {msg}{NC}")
+                            # 重新检查CUDA状态
+                            cuda_available, cuda_info = check_cuda()
+                        else:
+                            print(f"{RED}✗ {msg}{NC}")
+                    else:
+                        print(f"{YELLOW}跳过PyTorch CUDA安装。可稍后手动运行:{NC}")
+                        cuda_version = get_cuda_version()
+                        install_cmd, _, _ = get_pytorch_cuda_install_command(cuda_version)
+                        print(f"  {install_cmd}")
     
     # 配置文件
     print("\n[配置文件]")
