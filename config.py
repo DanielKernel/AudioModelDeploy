@@ -16,7 +16,7 @@ class Config:
     # 模型配置
     MODEL_NAME: str = os.getenv(
         "MODEL_NAME",
-        "Qwen/Qwen2-VL-7B-Instruct"  # 根据实际模型路径修改
+        "Qwen/Qwen3-Omni-30B-A3B-Instruct"  # 默认使用Qwen3 Omni模型
     )
     MODEL_DEVICE: Optional[str] = os.getenv("MODEL_DEVICE", None)  # None表示自动检测
     MODEL_TORCH_DTYPE: Optional[str] = os.getenv("MODEL_TORCH_DTYPE", None)  # None表示自动选择

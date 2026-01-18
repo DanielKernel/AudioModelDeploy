@@ -9,6 +9,9 @@ transformers>=4.35.0
 accelerate>=0.24.0
 sentencepiece>=0.1.99
 
+# ModelScope模型下载
+modelscope>=1.9.0
+
 # 数据处理
 numpy>=1.24.0
 pillow>=10.0.0

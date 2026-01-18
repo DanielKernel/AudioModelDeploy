@@ -191,7 +191,7 @@ HOST=0.0.0.0
 PORT=8000
 
 # 模型配置
-MODEL_NAME=Qwen/Qwen2-VL-7B-Instruct
+MODEL_NAME=Qwen/Qwen3-Omni-30B-A3B-Instruct
 MODEL_DEVICE=cuda
 MODEL_TORCH_DTYPE=bfloat16
 ```
@@ -217,7 +217,7 @@ python check_env.py
 |--------|------|--------|------|
 | `HOST` | 服务器监听地址 | `0.0.0.0` | `0.0.0.0` |
 | `PORT` | 服务器端口 | `8000` | `8000` |
-| `MODEL_NAME` | 模型名称或路径 | `Qwen/Qwen2-VL-7B-Instruct` | `Qwen/Qwen2.5-72B-Instruct` |
+| `MODEL_NAME` | 模型名称或路径 | `Qwen/Qwen3-Omni-30B-A3B-Instruct` | `Qwen/Qwen3-Omni-30B-A3B-Instruct` |
 | `MODEL_DEVICE` | 运行设备 | 自动检测 | `cuda`, `cpu` |
 | `MODEL_TORCH_DTYPE` | PyTorch数据类型 | 自动选择 | `float32`, `float16`, `bfloat16` |
 | `CUDA_VISIBLE_DEVICES` | 可见GPU设备 | `0` | `0,1,2,3` |

@@ -10,8 +10,18 @@ import asyncio
 from contextlib import asynccontextmanager
 import os
 import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# ModelScope导入（可选）
+try:
+    from modelscope import snapshot_download
+    from modelscope.hub.file_download import model_file_download
+    MODELSCOPE_AVAILABLE = True
+except ImportError:
+    MODELSCOPE_AVAILABLE = False
+    logger.warning("ModelScope未安装，将使用HuggingFace Hub下载模型")
 
 
 class Qwen3OmniModel:
@@ -33,7 +43,7 @@ class Qwen3OmniModel:
         """
         self.model_name = model_name or os.getenv(
             "MODEL_NAME",
-            "Qwen/Qwen2-VL-7B-Instruct"  # 根据实际模型名称修改
+            "Qwen/Qwen3-Omni-30B-A3B-Instruct"  # 默认使用Qwen3 Omni模型
         )
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         
@@ -54,11 +64,129 @@ class Qwen3OmniModel:
         logger.info(f"初始化模型: {self.model_name}")
         logger.info(f"设备: {self.device}, 数据类型: {self.torch_dtype}")
     
+    def _check_model_exists(self, model_name: str) -> bool:
+        """
+        检查模型是否已存在于本地缓存
+        
+        Args:
+            model_name: 模型名称或路径
+        
+        Returns:
+            True如果模型存在，False如果不存在
+        """
+        try:
+            # 检查是否是本地路径
+            if os.path.exists(model_name) and os.path.isdir(model_name):
+                # 检查是否有必要的模型文件
+                required_files = ["config.json"]
+                model_dir = Path(model_name)
+                if all((model_dir / f).exists() for f in required_files):
+                    logger.info(f"模型已在本地路径找到: {model_name}")
+                    return True
+            
+            # 尝试从HuggingFace缓存查找
+            from huggingface_hub import cached_path, hf_hub_download
+            try:
+                # 尝试获取config.json来验证模型是否存在
+                config_path = cached_path(
+                    f"{model_name}/config.json",
+                    cache_dir=os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+                )
+                if config_path and os.path.exists(config_path):
+                    logger.info(f"模型已在HuggingFace缓存中找到: {model_name}")
+                    return True
+            except Exception:
+                pass
+            
+            # 检查ModelScope缓存
+            if MODELSCOPE_AVAILABLE:
+                try:
+                    from modelscope.hub.api import HubApi
+                    api = HubApi()
+                    # ModelScope缓存通常在 ~/.cache/modelscope/hub 目录
+                    cache_root = os.path.expanduser("~/.cache/modelscope/hub")
+                    # 将模型名转换为路径格式 (Qwen/Qwen3-Omni-30B-A3B-Instruct -> qwen/qwen3-omni-30b-a3b-instruct)
+                    model_path_name = model_name.lower().replace("/", "--")
+                    model_cache_dir = os.path.join(cache_root, model_path_name)
+                    if os.path.exists(model_cache_dir):
+                        # 检查是否有config.json
+                        if os.path.exists(os.path.join(model_cache_dir, "config.json")):
+                            logger.info(f"模型已在ModelScope缓存中找到: {model_name}")
+                            return True
+                except Exception:
+                    pass
+            
+            return False
+        except Exception as e:
+            logger.warning(f"检查模型存在性时出错: {str(e)}")
+            return False
+    
+    def _download_model_from_modelscope(self, model_name: str) -> str:
+        """
+        从ModelScope下载模型（如果本地不存在）
+        
+        Args:
+            model_name: 模型名称
+        
+        Returns:
+            模型本地路径
+        """
+        if not MODELSCOPE_AVAILABLE:
+            raise ImportError(
+                "ModelScope未安装。请运行: pip install modelscope\n"
+                "如果模型已存在本地缓存，将直接使用。"
+            )
+        
+        logger.info(f"开始从ModelScope下载模型: {model_name}")
+        
+        try:
+            # 使用snapshot_download下载模型
+            # 如果模型已存在，不会重复下载
+            model_dir = snapshot_download(
+                model_name,
+                cache_dir=os.getenv("MODELSCOPE_CACHE", None),
+                local_files_only=False  # 允许从网络下载
+            )
+            
+            logger.info(f"模型下载完成，本地路径: {model_dir}")
+            return model_dir
+        except Exception as e:
+            logger.error(f"从ModelScope下载模型失败: {str(e)}")
+            raise
+    
+    def _ensure_model_available(self):
+        """
+        确保模型可用，如果不存在则从ModelScope下载
+        """
+        # 检查模型是否已存在
+        if self._check_model_exists(self.model_name):
+            logger.info("模型已存在，跳过下载")
+            return
+        
+        # 模型不存在，尝试从ModelScope下载
+        logger.info("模型不存在，尝试从ModelScope下载...")
+        
+        try:
+            downloaded_path = self._download_model_from_modelscope(self.model_name)
+            # 如果下载成功，更新model_name为本地路径（可选）
+            # 注意：transformers可以直接使用模型名称，它会自动查找缓存
+            logger.info(f"模型准备完成: {self.model_name}")
+        except Exception as e:
+            logger.error(f"无法确保模型可用: {str(e)}")
+            logger.warning(
+                "如果模型已在本地其他位置，请设置MODEL_NAME环境变量指向模型路径，"
+                "或确保网络连接正常以从ModelScope下载。"
+            )
+            raise
+    
     def load_model(self):
         """加载模型和tokenizer"""
         if self._is_loaded:
             logger.warning("模型已经加载")
             return
+        
+        # 确保模型可用（检查并下载）
+        self._ensure_model_available()
         
         try:
             logger.info("开始加载tokenizer...")
