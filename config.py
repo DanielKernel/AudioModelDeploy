@@ -10,8 +10,8 @@ class Config:
     """应用配置类"""
     
     # 服务器配置
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
+    HOST: str = os.getenv("HOST", "192.168.1.22")
+    PORT: int = int(os.getenv("PORT", "9999"))
     
     # 模型配置
     MODEL_NAME: str = os.getenv(
@@ -24,7 +24,7 @@ class Config:
     # 推理配置
     DEFAULT_TEMPERATURE: float = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
     DEFAULT_TOP_P: float = float(os.getenv("DEFAULT_TOP_P", "0.9"))
-    DEFAULT_MAX_TOKENS: Optional[int] = int(os.getenv("DEFAULT_MAX_TOKENS", "2048")) if os.getenv("DEFAULT_MAX_TOKENS") else None
+    DEFAULT_MAX_TOKENS: Optional[int] = int(os.getenv("DEFAULT_MAX_TOKENS", "65535")) if os.getenv("DEFAULT_MAX_TOKENS") else 65535
     
     # 日志配置
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

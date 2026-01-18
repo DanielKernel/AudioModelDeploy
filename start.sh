@@ -5,8 +5,8 @@
 set -e
 
 # 设置默认环境变量
-export HOST=${HOST:-0.0.0.0}
-export PORT=${PORT:-8000}
+export HOST=${HOST:-192.168.1.22}
+export PORT=${PORT:-9999}
 export MODEL_NAME=${MODEL_NAME:-"Qwen/Qwen3-Omni-30B-A3B-Instruct"}
 export LOG_LEVEL=${LOG_LEVEL:-INFO}
 

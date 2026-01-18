@@ -94,8 +94,8 @@ cp env.example .env
 
 主要配置项：
 - `MODEL_NAME`: 模型名称或路径
-- `HOST`: 服务器监听地址（默认: 0.0.0.0）
-- `PORT`: 服务器端口（默认: 8000）
+- `HOST`: 服务器监听地址（默认: 192.168.1.22）
+- `PORT`: 服务器端口（默认: 9999）
 - `MODEL_DEVICE`: 设备（cuda/cpu，默认自动检测）
 
 #### 4. 检查环境
@@ -137,7 +137,7 @@ docker-compose up -d
 
 ```bash
 docker build -t qwen3-omni-api .
-docker run -d --gpus all -p 8000:8000 --env-file .env qwen3-omni-api
+docker run -d --gpus all -p 9999:9999 --env-file .env qwen3-omni-api
 ```
 
 ### 方式三：直接安装（不推荐）
@@ -152,9 +152,9 @@ python app.py
 
 ### 4. 访问API
 
-- API文档: http://localhost:8000/docs
-- 健康检查: http://localhost:8000/health
-- 流式聊天: http://localhost:8000/v1/chat/completions
+- API文档: http://192.168.1.22:9999/docs
+- 健康检查: http://192.168.1.22:9999/health
+- 流式聊天: http://192.168.1.22:9999/v1/chat/completions
 
 ## API使用示例
 
@@ -163,7 +163,7 @@ python app.py
 使用curl进行流式请求：
 
 ```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
+curl -X POST http://192.168.1.22:9999/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -180,7 +180,7 @@ Python客户端示例：
 import requests
 import json
 
-url = "http://localhost:8000/v1/chat/completions"
+url = "http://192.168.1.22:9999/v1/chat/completions"
 
 payload = {
     "messages": [
@@ -213,7 +213,7 @@ print()  # 换行
 ### 2. 同步聊天
 
 ```bash
-curl -X POST http://localhost:8000/v1/chat/completions/sync \
+curl -X POST http://192.168.1.22:9999/v1/chat/completions/sync \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -228,7 +228,7 @@ curl -X POST http://localhost:8000/v1/chat/completions/sync \
 ```python
 import requests
 
-url = "http://localhost:8000/v1/chat/completions/sync"
+url = "http://192.168.1.22:9999/v1/chat/completions/sync"
 
 response = requests.post(url, json={
     "messages": [

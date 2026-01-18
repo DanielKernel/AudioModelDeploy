@@ -196,8 +196,8 @@ async def chat_completions_sync(request: ChatRequest):
 
 if __name__ == "__main__":
     import os
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
+    host = os.getenv("HOST", "192.168.1.22")
+    port = int(os.getenv("PORT", "9999"))
     
     uvicorn.run(
         "app:app",

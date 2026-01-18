@@ -135,7 +135,7 @@ docker build -t qwen3-omni-api .
 docker run -d \
   --name qwen3-omni-api \
   --gpus all \
-  -p 8000:8000 \
+  -p 9999:9999 \
   --env-file .env \
   qwen3-omni-api
 ```
@@ -187,8 +187,8 @@ cp env.example .env
 
 ```bash
 # 服务器配置
-HOST=0.0.0.0
-PORT=8000
+HOST=192.168.1.22
+PORT=9999
 
 # 模型配置
 MODEL_NAME=Qwen/Qwen3-Omni-30B-A3B-Instruct
@@ -215,8 +215,8 @@ python check_env.py
 
 | 变量名 | 说明 | 默认值 | 示例 |
 |--------|------|--------|------|
-| `HOST` | 服务器监听地址 | `0.0.0.0` | `0.0.0.0` |
-| `PORT` | 服务器端口 | `8000` | `8000` |
+| `HOST` | 服务器监听地址 | `192.168.1.22` | `192.168.1.22` |
+| `PORT` | 服务器端口 | `9999` | `9999` |
 | `MODEL_NAME` | 模型名称或路径 | `Qwen/Qwen3-Omni-30B-A3B-Instruct` | `Qwen/Qwen3-Omni-30B-A3B-Instruct` |
 | `MODEL_DEVICE` | 运行设备 | 自动检测 | `cuda`, `cpu` |
 | `MODEL_TORCH_DTYPE` | PyTorch数据类型 | 自动选择 | `float32`, `float16`, `bfloat16` |

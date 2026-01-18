@@ -96,7 +96,7 @@ def check_env_file() -> Tuple[bool, str]:
 def check_port() -> Tuple[bool, str]:
     """检查端口是否可用"""
     import socket
-    port = int(os.getenv('PORT', '8000'))
+    port = int(os.getenv('PORT', '9999'))
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1)
