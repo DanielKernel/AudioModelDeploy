@@ -1,0 +1,24 @@
+# 开发环境依赖
+# 用于开发和测试
+
+# 包含生产环境依赖
+-r requirements.txt
+
+# 代码格式化和检查
+black>=23.0.0
+flake8>=6.0.0
+isort>=5.12.0
+mypy>=1.5.0
+
+# 测试框架
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+httpx>=0.25.0  # 用于测试API
+
+# 开发工具
+ipython>=8.15.0
+ipdb>=0.13.13
+
+# 类型检查依赖
+types-requests>=2.31.0
